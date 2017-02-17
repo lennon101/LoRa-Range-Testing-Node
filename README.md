@@ -27,14 +27,14 @@ This is a program writen for the Seeeduino Stalker v2.3 and   uses the Multitech
 An explanation of some likely debug responses is listed below: 
 
 ```
-j: 0            			--> the mdot successfully joined
-j: -1            			--> mdot didn't joing LoRa network 
-sp: ok						--> Sending Pairs --> success 
-sp: err						--> Sending Pairs --> failed 
-rssi: XX 					--> the rssi of the last packet sent 
-snr: XX						--> the snr of the last packet 
-dr: X						--> the current Data Rate the mDot is using
-dr: err						--> setting the data rate failed 
+j: 0		--> the mdot successfully joined
+j: -1		--> mdot didn't joing LoRa network 
+sp: ok		--> Sending Pairs --> success 
+sp: err		--> Sending Pairs --> failed 
+rssi: XX	--> the rssi of the last packet sent 
+snr: XX		--> the snr of the last packet 
+dr: X		--> the current Data Rate the mDot is using
+dr: err		--> setting the data rate failed 
 ```
 For more information on AT commands, please see the Multech [AT Command Getting Started Guide](http://www.multitech.net/developer/software/mdot-software/at-command-firmware-user-guide/) and the [DOT Series AT Command Reference Guide](http://www.multitech.com/documents/publications/manuals/s000643.pdf).
 
