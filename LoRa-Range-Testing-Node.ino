@@ -1,42 +1,34 @@
-
 /*
-  This is an example program writen for the Seeeduino Stalker v2.3 and
-  uses the Multitech mDOT LoRa module running the Australian compatable AT
-  enabled firmware.
-
-  It also makes use of a nokia5110 lcd screen to display data to display data
-  as well as a rotary encoder to manually adjust the data rate of the mdot.
+  This is an example program writen for the Arduino UNO R3 and
+  uses the Multitech mDOT LoRa module running the Australian 
+  compatable AT enabled firmware.
 
   This program,
     Joins the LoRa Network
-    Sends loop count
-    Gets the RSSI and SNR of the last packet sent and displays the data on
-    the lcd screen.
-
-    Turning the rotary encoder knob clockwise will increment the data rate.
-    Turning the knob counter-clockwise will decrement the data rate
+    Sends a loop count to Altoview
 */
 
 /*--------------------------------------------------------------------------------------
   Includes
   --------------------------------------------------------------------------------------*/
-#include <LoRaAT.h>                              //Include LoRa AT libraray
-#include <PCD8544.h>
+#include <AltoviewMDot.h>
+#include <AltSoftSerial.h>
+#include <SoftwareSerial.h>
+#include <LiquidCrystal.h>
+
+// initialize the library with the numbers of the interface pins
+LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
 
 /*--------------------------------------------------------------------------------------
   Definitions
   --------------------------------------------------------------------------------------*/
-LoRaAT mdot;
-static PCD8544 lcd;
+/* library uses software serial to communicate with the mDot module */
+AltSoftSerial mdotSerial;				// AltSoftSerial only uses ports 8, 9 for RX, TX 
+/* library uses hardware serial to print the debuggin information */
+HardwareSerial& debugSerial = Serial;
 
-//Rotary encoder variables:
-int val = 1;
-int lastVal = 0;
-int pos = 2;
-int pos_old = 2;
-int clk_pin = 2;
-int dt_pin = 9;
-int ledPin = 8;
+/* creating an object of a type LoRaAT called mDot */
+AltoviewMDot mdot(&mdotSerial, &debugSerial);
 
 /*--- setup() --------------------------------------------------------------------------
   Called by the Arduino framework once, before the main loop begins.
@@ -45,116 +37,79 @@ int ledPin = 8;
    - Opens serial communication with MDOT
   --------------------------------------------------------------------------------------*/
 void setup() {
-  // PCD8544-compatible displays may have a different resolution...
-  lcd.begin(84, 48);                             //Setup the lcd screen
-  lcd.print(F("j:"));                 //Display setup msg on lcd screen
+  int responseCode;
+  /* begins a serial communication of a hardware serial */
+  debugSerial.begin(38400);             
+  /* begins a serial communication of a software serial */
+  mdotSerial.begin(38400);
+  
+  debugSerial.println("Joining Altoview...");
+   
+  lcd.begin(16, 2);                                     // set up the LCD's number of columns and rows:
+  lcd.print("Joining Altoview");                        // Print a message to the LCD.
+  lcd.setCursor(0, 1);                                  // move curser to column 0, row 1
+  mdot.begin();							
 
-  int responseCode;                              //Response of mDot commands
-  delay(1500);
-  mdot.begin();                             //Opens serial comms with MDOT
-
+  int loopCount = 0; 
   do {
-    delay(1500);
-    responseCode = mdot.join();                  //Send Join Request to LoRa server
+	/* attempt to join to Altoview */
+    responseCode = mdot.join();
     lcd.print(responseCode);
-    lcd.print(", ");
+    lcd.print(",");
+    ++loopCount;
+    if (loopCount > 4) { 
+      lcd.print("                ");                        // clear this row
+      lcd.setCursor(0, 1);                                  // move curser to column 0, row 1
+    }
+	  /* waiting for the join process to finish. */
     delay(10000);
   } while (responseCode != 0);
-
-  // rotary encoder setup:
-  pinMode(clk_pin, INPUT); //Rotary Encoder pin CLK
-  pinMode(dt_pin, INPUT); //Rotary encoder pin DT
-  pinMode(ledPin, OUTPUT);
-
-  attachInterrupt(digitalPinToInterrupt(clk_pin), updatePot, FALLING);
-  mdot.getDataRate();                           //update the data rate to match what is used in the LoRat library setDefault() function
+  
+  lcd.setCursor(0, 0);
+  lcd.print("Joined.         ");
 }
-
 
 /*--- loop() ---------------------------------------------------------------------------
   Main loop called by the Arduino framework
   --------------------------------------------------------------------------------------*/
 int loopNum = 0;
-int8_t responseCode;                              //Response code from the mdot
-boolean state = false; 
+char msg[30];                                           // RSSI:XXX SNR:XX
+char snr[4];                                            // XX.X
 void loop() {
-  /*---------------NB-------------------------------------------------
-    too many setCursor's in main loop causes stack overflow. be careful.
-    --------------------------------------------------------------------
-  */
-  lcd.clear();
-  lcd.print(F("sp: "));
-  char cmd[4] = "L:";                       //cmd = {'L',':','#','#'}
-  cmd[2] = char(loopNum);
-  cmd[3] = "\0";
-  responseCode = mdot.sendPairs(cmd);
-  delay(5000);
-
-  if (responseCode != 0) {
-    lcd.print(F("err"));
-    delay(1500);                              //delay for 1.5s so the msg can be seen
-  } else {
-    lcd.print(F("ok"));
-    delay(1500);                              //delay for 1.5s so the msg can be seen
-    loopNum++;
-    mdot.ping();
-    lcd.clear();
-
-    lcd.print(F("rssi: "));
+  int responseCode;
+  /* send the loop count in the JSON format to Altoview */
+  lcd.setCursor(0, 1);
+  lcd.print("                ");
+  lcd.setCursor(0, 0);
+  lcd.print("Sending Pairs   ");
+  responseCode = mdot.sendPairs("L:" + String(loopNum));
+  delay(10000);                                         // delay for 10 seconds to give mDot time to send
+  if (responseCode == 0){
+    mdot.ping(); 
+    dtostrf(mdot.snr, 4, 1, snr);                       // needed to do this because sprintf does not support floats in arduino
+    sprintf(msg, "R:%d,S:%s",mdot.rssi,snr); 
+    debugSerial.println(msg);  
+    lcd.setCursor(0, 1);
+    lcd.print("                ");
+    lcd.setCursor(0, 1);
+    //delay(1000);
+    lcd.print(msg);
+    /*
+    lcd.setCursor(0, 0);
+    lcd.print("RSSI: ");
     lcd.print(mdot.rssi);
-    lcd.setCursor(0, 2);
-    lcd.print(F("snr: "));
-    lcd.print(mdot.snr);
+    lcd.setCursor(0, 1);
+    lcd.print("                ");
+    delay(300);
+    lcd.print("SNR:");
+    delay(300);
+    lcd.print(snr);
+    */
+  }else{
+    debugSerial.println("error in sending pairs");
+    lcd.setCursor(0, 1);
+    lcd.print("error           ");
   }
-
-  if (pos_old != pos) {                 //the rotary encoder has changed
-    updateDataRate();
-    pos_old = pos;
-  }
-  lcd.setCursor(0, 4);
-  dispDataRate();
-  delay(10000);                         //delay so lcd messages can be read
+  delay(10000);						
+  loopNum++;
 }
-
-void updatePot() {
-  digitalWrite(ledPin, (state) ? HIGH : LOW); 
-  state = !state; 
-  //read rotary encoder
-  pos += digitalRead(dt_pin) ? 1 : -1 ;
-  if (pos > 10) {
-    pos = 10;
-  } else if (pos < 0) {
-    pos = 0;
-  } 
-}
-
-void updateDataRate() {
-  uint8_t cmd = 0;
-  if (0 <= pos <= 4) {
-    cmd = pos;
-  } else if (5 <= pos <= 10) {
-    cmd = pos + 3;                   //plus 3 to skip missing (not used) data rates 5-7
-  } else {
-    lcd.print(F("err3"));
-    responseCode = -1;
-  }
-
-  responseCode = mdot.setDataRate(cmd);
-  if (responseCode != 0) {
-    lcd.print(F("err1"));
-  } else {
-    lcd.print(F("ok"));
-  }
-}
-
-void dispDataRate() {
-  lcd.print(F("dr: "));
-  responseCode = mdot.getDataRate();
-  if (responseCode != 0) {
-    lcd.print(F("err2"));
-  } else {
-    lcd.print(mdot.dataRate);
-  }
-}
-
-
