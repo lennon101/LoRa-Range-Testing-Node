@@ -11,41 +11,49 @@
  * compatable AT enabled firmware.
  * 
  * This program,
- *  Joins the LoRa Network
- *  Sends a loop count to Altoview
+ *  Joins the LoRa Network.
+ *  Sends a loop count to Altoview.
+ *  Gets the RSSI and SNR from the last packet and displays this information to the LCD screen.
  *  
  *  Hardware:
  *    1. mDot Lora Radio Module
  *    2. LiquidCrystal display (LCD) based on the Hitachi HD44780 (or a compatible) chipset
  *    3. Modified Arduino xBee Sheild. The mDot is controlled on pins 8 and 9 via the AltSoftSerial.h 
  *        library. The sheild required a modification to ensure the tx/rx pins were rerouted to pins 8/9
- *  
- *  Program Discription:
- *    This program is written for use in CRBasic programming training courses.
- *    It demonstrates how to use the CR1000 logger to measure a 4-20ma 
- *    output pressure sensor using a 100 OHM precision resistor
- *    
 */
 
 /*--------------------------------------------------------------------------------------
   Includes
   --------------------------------------------------------------------------------------*/
+float getSlope(float history[]) __attribute__((__optimize__("O2")));
+
+#define DEBUG                                 // uncomment to print ALL debug info and responses from mDot
+//#define DEBUG2                                // uncomment to print only timed out responses and commands
+
 #include <AltoviewMDot.h>
 #include <AltSoftSerial.h>
 #include <SoftwareSerial.h>
 #include <LiquidCrystal.h>
 
-// initialize the library with the numbers of the interface pins
-LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
-
 /*--------------------------------------------------------------------------------------
   Definitions
   --------------------------------------------------------------------------------------*/
 /* library uses software serial to communicate with the mDot module */
-AltSoftSerial mdotSerial;				                       // AltSoftSerial only uses ports 8, 9 for RX, TX 
-HardwareSerial& debugSerial = Serial;                  // library uses hardware serial to print the debuggin information
+AltSoftSerial mdotSerial;				                              // AltSoftSerial only uses ports 8, 9 for RX, TX 
+//HardwareSerial& Serial = Serial;                         // library uses hardware serial to print the debuggin information
+AltoviewMDot mdot(&mdotSerial, &Serial);                 // creat an object of a type LoRaAT called mDot
 
-AltoviewMDot mdot(&mdotSerial, &debugSerial);          // creat an object of a type LoRaAT called mDot
+LiquidCrystal lcd(2, 3, 4, 5, 6, 7);                          // initialize the library with the numbers of the interface pins
+
+// define some values used by the panel and buttons
+int lcd_key     = 0;
+int adc_key_in  = 0;
+#define btnRIGHT  0
+#define btnUP     1
+#define btnDOWN   2
+#define btnLEFT   3
+#define btnSELECT 4
+#define btnNONE   5
 
 /*--- setup() --------------------------------------------------------------------------
   Called by the Arduino framework once, before the main loop begins.
@@ -55,31 +63,42 @@ AltoviewMDot mdot(&mdotSerial, &debugSerial);          // creat an object of a t
   --------------------------------------------------------------------------------------*/
 void setup() {
   int responseCode;                                     // Variable to hold response from mDot LoRa radio
-  debugSerial.begin(38400);                             // begins a serial communication of a hardware serial  
+  Serial.begin(38400);                             // begins a serial communication of a hardware serial  
   mdotSerial.begin(38400);                              // begins a serial communication of a software serial 
-  
-  debugSerial.println("Joining Altoview...");
+  Serial.println("========================================\n========= LoRa Range Testing =========\n========================================");
+
+  Serial.println("Joining Altoview...");
    
   lcd.begin(16, 2);                                     // set up the LCD's number of columns and rows
-  lcd.print("Joining Altoview");                        // Print a message to the LCD.
   mdot.begin();							
 
+  int failCount = 0; 
   do {
+    clearLCD(); 
+    lcd.print("Joining Altoview");                        // Print a message to the LCD.
+    lcd.setCursor(8,1);                                 // move to column 8, row 1 
+    lcd.print("fail #:");
+    lcd.print(failCount); 
     lcd.setCursor(0, 1);                                // move curser to column 0, row 1
-    lcd.print("join req");
     responseCode = mdot.join();                         // attempt to join to Altoview
     for (int i=0;i<3;++i){
       lcd.print(".");
-      delay(3000);                                      // wait for the join process to finish
+      delay(1000);                                      // wait for the join process to finish
     }
     if (responseCode != 0){
-      lcd.print("err  "); 
+      ++failCount;
     }
   } while (responseCode != 0);
   
   clearLCD();                                            // return the cursor to the top row, first column 
   lcd.print("Joined.         ");                         // display msg and fill string to 16 characters long to clear any
   delay(1500);
+
+  lcd.setCursor(0,1);                                    // move to the begining of the second line
+  lcd.print("Hit SEL to begin"); 
+  while (lcd_key != btnSELECT){
+    lcd_key = read_LCD_buttons();  // read the buttons
+  } 
 }
 
 /*--- loop() ---------------------------------------------------------------------------
@@ -93,41 +112,63 @@ char msg[30];                                           // RSSI:XXX SNR:XX
 char snr[4];                                            // XX.X
 void loop() {
   int responseCode;
-  lcd.setCursor(0,0);
+  clearLCD();
   lcd.print("Sending Pairs");
   responseCode = mdot.sendPairs("L:" + String(loopNum));
   for (int i=0;i<3;++i){
       lcd.print(".");
-      delay(3000);                                      // wait for the sendPairs process to finish
+      delay(1500);                                      // wait for the sendPairs process to finish
     }
     
   if (responseCode != 0){
-    debugSerial.println("error in sending pairs");
+    Serial.println("error in sending pairs");
     lcd.setCursor(0, 1);
     lcd.print("error           ");
   }else{
     mdot.ping(); 
-    dtostrf(mdot.snr, 4, 1, snr);                       // needed to do this because sprintf does not support floats in arduino
-    sprintf(msg, "R:%d,S:%s",mdot.rssi,snr); 
-    debugSerial.println(msg);  
+    clearLCD(); 
+    lcd.print("R:");
+    lcd.print(mdot.rssi);  
     lcd.setCursor(0, 1);
-    lcd.print("                ");
-    lcd.setCursor(0, 1);
-    lcd.print(msg);
-    /*
-    lcd.setCursor(0, 0);
-    lcd.print("RSSI: ");
-    lcd.print(mdot.rssi);
-    lcd.setCursor(0, 1);
-    lcd.print("                ");
-    delay(300);
-    lcd.print("SNR:");
-    delay(300);
-    lcd.print(snr);
-    */
+    delay(10);
+    lcd.print("S:"); 
+    lcd.print(mdot.snr);
+
+    Serial.println("----------------------------------");
+    Serial.print("mdot.rssi: "); 
+    Serial.println(mdot.rssi);
+    Serial.print("mdot.snr: "); 
+    Serial.println(mdot.snr);  
   }
+
+  //lcd.setCursor(1,14); 
+  //lcd.print(getDataRate()); 
+  
   delay(10000);						
   loopNum++;
+}
+
+// read the buttons
+int read_LCD_buttons(){
+  adc_key_in = analogRead(0);                           // read the value from the sensor
+  if (adc_key_in < 620)  return btnSELECT;
+  if (adc_key_in > 1000) return btnNONE; 
+  if (adc_key_in < 820)  return btnRIGHT;
+  if (adc_key_in < 860)  return btnLEFT;
+  if (adc_key_in < 915)  return btnDOWN;
+  if (adc_key_in < 940)  return btnUP;
+  
+  return btnNONE;  // when all others fail, return this...
+}
+
+uint8_t getDataRate(){
+  int responseCode; 
+  responseCode = mdot.getDataRate();
+  if (responseCode != 0) {
+    return mdot.dataRate;
+  } else {
+    return -1;
+  }
 }
 
 void clearLCD(){
@@ -137,4 +178,5 @@ void clearLCD(){
   lcd.print("                ");
   lcd.setCursor(0,0);                               //return the cursor to the top row, first column
 }
+
 
