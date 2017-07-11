@@ -6,9 +6,6 @@
  * Program Author:  Dane Lennon
  * 
  * -------------------------------------------------------------------------------------
- * This is an example program writen for the Arduino UNO R3 and
- * uses the Multitech mDOT LoRa module running the Australian 
- * compatable AT enabled firmware.
  * 
  * This program,
  *  Joins the LoRa Network.
@@ -45,7 +42,7 @@ AltoviewMDot mdot(&mdotSerial, &Serial);                         // creat an obj
 
 LiquidCrystal lcd(2, 3, 4, 5, 6, 7);                             // initialize the library with the numbers of the interface pins
 
-// define some values used by the panel and buttons
+// define values used by the panel and buttons
 int lcd_key     = 0;
 int adc_key_in  = 0;
 #define btnRIGHT  0
@@ -55,12 +52,13 @@ int adc_key_in  = 0;
 #define btnSELECT 4
 #define btnNONE   5
 
-/*--- setup() --------------------------------------------------------------------------
-  Called by the Arduino framework once, before the main loop begins.
-
-  In the setup() routine:
-   - Opens serial communication with MDOT
-  --------------------------------------------------------------------------------------*/
+/**
+ * setup()
+ * 
+ * @brief Called by the Arduino framework once, before the main loop begins.
+ * @details In the setup() routine:
+ *    Opens serial communication with MDOT
+ */
 void setup() {
   int responseCode;                                               // Variable to hold response from mDot LoRa radio
   Serial.begin(38400);                                            // begins a serial communication of a hardware serial  
@@ -101,12 +99,14 @@ void setup() {
   } 
 }
 
-/*--- loop() ---------------------------------------------------------------------------
-  Main loop called by the Arduino framework
-
-  In the loop() routine:
-   - send the loop count in the JSON format to Altoview
-  --------------------------------------------------------------------------------------*/
+/**
+ * loop()
+ * 
+ * @brief Main loop called by the Arduino framework
+ * @details In the loop() routine:
+ *    send the loop count in the JSON format to Altoview
+ * @return void
+ */
 int loopNum = 0;
 char msg[30];                                                         // RSSI:XXX SNR:XX
 char snr[4];                                                          // XX.X
@@ -149,7 +149,14 @@ void loop() {
   loopNum++;
 }
 
-// read the buttons
+/**
+ * read_LCD_buttons()
+ * 
+ * @brief if any button pressed on lcd, return their value
+ * @details function uses the analogRead() to ascertain if any 
+ * buttons were pushed since last check
+ * @return the interger value of the button (defined in header)
+ */
 int read_LCD_buttons(){
   adc_key_in = analogRead(0);                           // read the value from the sensor
   if (adc_key_in < 620)  return btnSELECT;
@@ -162,6 +169,13 @@ int read_LCD_buttons(){
   return btnNONE;  // when all others fail, return this...
 }
 
+/**getDataRate()
+ * 
+ * @brief return the datarate of the mDot 
+ * @details uses the mdot object function getDataRate() 
+ * which stores the datarate in the mdot public member mDot.dataRate
+ * @return dataRate or -1 if response failed
+ */
 uint8_t getDataRate(){
   int responseCode; 
   responseCode = mdot.getDataRate();
@@ -172,6 +186,12 @@ uint8_t getDataRate(){
   }
 }
 
+/**
+ * clearLCD()
+ * 
+ * @brief clears the lcd screen
+ * @details clears top and bottom row of the lcd screen
+ */
 void clearLCD(){
   lcd.setCursor(0,0);
   lcd.print("                ");
