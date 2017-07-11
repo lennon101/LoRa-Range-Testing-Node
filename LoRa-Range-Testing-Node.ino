@@ -1,160 +1,203 @@
-
 /*
-  This is an example program writen for the Seeeduino Stalker v2.3 and
-  uses the Multitech mDOT LoRa module running the Australian compatable AT
-  enabled firmware.
-
-  It also makes use of a nokia5110 lcd screen to display data to display data
-  as well as a rotary encoder to manually adjust the data rate of the mdot.
-
-  This program,
-    Joins the LoRa Network
-    Sends loop count
-    Gets the RSSI and SNR of the last packet sent and displays the data on
-    the lcd screen.
-
-    Turning the rotary encoder knob clockwise will increment the data rate.
-    Turning the knob counter-clockwise will decrement the data rate
+ * =====================================================================================
+ * LoRa Range Testing Node for Altoview 
+ * =====================================================================================
+ * Date:            12 May 17 
+ * Program Author:  Dane Lennon
+ * 
+ * -------------------------------------------------------------------------------------
+ * 
+ * This program,
+ *  Joins the LoRa Network.
+ *  Sends a loop count to Altoview.
+ *  Gets the RSSI and SNR from the last packet and displays this information to the LCD screen.
+ *  
+ *  Hardware:
+ *    1. mDot Lora Radio Module
+ *    2. LiquidCrystal display (LCD) based on the Hitachi HD44780 (or a compatible) chipset
+ *    3. Modified Arduino xBee Sheild. The mDot is controlled on pins 8 and 9 via the AltSoftSerial.h 
+ *        library. The sheild required a modification to ensure the tx/rx pins were rerouted to pins 8/9
 */
 
 /*--------------------------------------------------------------------------------------
   Includes
   --------------------------------------------------------------------------------------*/
-#include <LoRaAT.h>                              //Include LoRa AT libraray
-#include <PCD8544.h>
+float getSlope(float history[]) __attribute__((__optimize__("O2")));        // set the compilation optimization to O2 
+
+#define DEBUG                                                   // uncomment to print ALL debug info and responses from mDot
+//#define DEBUG2                                                // uncomment to print only timed out responses and commands
+
+#include <AltoviewMDot.h>
+#include <AltSoftSerial.h>
+#include <SoftwareSerial.h>
+#include <LiquidCrystal.h>
 
 /*--------------------------------------------------------------------------------------
   Definitions
   --------------------------------------------------------------------------------------*/
-LoRaAT mdot;
-static PCD8544 lcd;
+/* library uses software serial to communicate with the mDot module */
+AltSoftSerial mdotSerial;				                                 // AltSoftSerial only uses ports 8, 9 for RX, TX 
+//HardwareSerial& Serial = Serial;                               // library uses hardware serial to print the debuggin information
+AltoviewMDot mdot(&mdotSerial, &Serial);                         // creat an object of a type LoRaAT called mDot
 
-//Rotary encoder variables:
-int val = 1;
-int lastVal = 0;
-int pos = 2;
-int pos_old = 2;
-int clk_pin = 2;
-int dt_pin = 9;
-int ledPin = 8;
+LiquidCrystal lcd(2, 3, 4, 5, 6, 7);                             // initialize the library with the numbers of the interface pins
 
-/*--- setup() --------------------------------------------------------------------------
-  Called by the Arduino framework once, before the main loop begins.
+// define values used by the panel and buttons
+int lcd_key     = 0;
+int adc_key_in  = 0;
+#define btnRIGHT  0
+#define btnUP     1
+#define btnDOWN   2
+#define btnLEFT   3
+#define btnSELECT 4
+#define btnNONE   5
 
-  In the setup() routine:
-   - Opens serial communication with MDOT
-  --------------------------------------------------------------------------------------*/
+/**
+ * setup()
+ * 
+ * @brief Called by the Arduino framework once, before the main loop begins.
+ * @details In the setup() routine:
+ *    Opens serial communication with MDOT
+ */
 void setup() {
-  // PCD8544-compatible displays may have a different resolution...
-  lcd.begin(84, 48);                             //Setup the lcd screen
-  lcd.print(F("j:"));                 //Display setup msg on lcd screen
+  int responseCode;                                               // Variable to hold response from mDot LoRa radio
+  Serial.begin(38400);                                            // begins a serial communication of a hardware serial  
+  mdotSerial.begin(38400);                                        // begins a serial communication of a software serial 
+  Serial.println("========================================\n========= LoRa Range Testing =========\n========================================");
 
-  int responseCode;                              //Response of mDot commands
-  delay(1500);
-  mdot.begin();                             //Opens serial comms with MDOT
+  Serial.println("Joining Altoview...");
+   
+  lcd.begin(16, 2);                                                // set up the LCD's number of columns and rows
+  mdot.begin();							
 
+  int failCount = 0; 
   do {
-    delay(1500);
-    responseCode = mdot.join();                  //Send Join Request to LoRa server
-    lcd.print(responseCode);
-    lcd.print(", ");
-    delay(10000);
+    clearLCD(); 
+    lcd.print("Joining Altoview");                                 // Print a message to the LCD.
+    lcd.setCursor(7,1);                                            // move to column 8, row 1 
+    lcd.print("fail #:");
+    lcd.print(failCount); 
+    lcd.setCursor(0, 1);                                           // move curser to column 0, row 1
+    responseCode = mdot.join();                                    // attempt to join to Altoview
+    for (int i=0;i<3;++i){
+      lcd.print(".");
+      delay(1000);                                                 // wait for the join process to finish
+    }
+    if (responseCode != 0){
+      ++failCount;
+    }
   } while (responseCode != 0);
+  
+  clearLCD();                                                        // return the cursor to the top row, first column 
+  lcd.print("Joined.         ");                                     // display msg and fill string to 16 characters long to clear any
+  delay(1500);
 
-  // rotary encoder setup:
-  pinMode(clk_pin, INPUT); //Rotary Encoder pin CLK
-  pinMode(dt_pin, INPUT); //Rotary encoder pin DT
-  pinMode(ledPin, OUTPUT);
-
-  attachInterrupt(digitalPinToInterrupt(clk_pin), updatePot, FALLING);
-  mdot.getDataRate();                           //update the data rate to match what is used in the LoRat library setDefault() function
-}
-
-
-/*--- loop() ---------------------------------------------------------------------------
-  Main loop called by the Arduino framework
-  --------------------------------------------------------------------------------------*/
-int loopNum = 0;
-int8_t responseCode;                              //Response code from the mdot
-boolean state = false; 
-void loop() {
-  /*---------------NB-------------------------------------------------
-    too many setCursor's in main loop causes stack overflow. be careful.
-    --------------------------------------------------------------------
-  */
-  lcd.clear();
-  lcd.print(F("sp: "));
-  char cmd[4] = "L:";                       //cmd = {'L',':','#','#'}
-  cmd[2] = char(loopNum);
-  cmd[3] = "\0";
-  responseCode = mdot.sendPairs(cmd);
-  delay(5000);
-
-  if (responseCode != 0) {
-    lcd.print(F("err"));
-    delay(1500);                              //delay for 1.5s so the msg can be seen
-  } else {
-    lcd.print(F("ok"));
-    delay(1500);                              //delay for 1.5s so the msg can be seen
-    loopNum++;
-    mdot.ping();
-    lcd.clear();
-
-    lcd.print(F("rssi: "));
-    lcd.print(mdot.rssi);
-    lcd.setCursor(0, 2);
-    lcd.print(F("snr: "));
-    lcd.print(mdot.snr);
-  }
-
-  if (pos_old != pos) {                 //the rotary encoder has changed
-    updateDataRate();
-    pos_old = pos;
-  }
-  lcd.setCursor(0, 4);
-  dispDataRate();
-  delay(10000);                         //delay so lcd messages can be read
-}
-
-void updatePot() {
-  digitalWrite(ledPin, (state) ? HIGH : LOW); 
-  state = !state; 
-  //read rotary encoder
-  pos += digitalRead(dt_pin) ? 1 : -1 ;
-  if (pos > 10) {
-    pos = 10;
-  } else if (pos < 0) {
-    pos = 0;
+  lcd.setCursor(0,1);                                                // move to the begining of the second line
+  lcd.print("Hit SEL to begin"); 
+  while (lcd_key != btnSELECT){
+    lcd_key = read_LCD_buttons();                                    // read the buttons
   } 
 }
 
-void updateDataRate() {
-  uint8_t cmd = 0;
-  if (0 <= pos <= 4) {
-    cmd = pos;
-  } else if (5 <= pos <= 10) {
-    cmd = pos + 3;                   //plus 3 to skip missing (not used) data rates 5-7
-  } else {
-    lcd.print(F("err3"));
-    responseCode = -1;
+/**
+ * loop()
+ * 
+ * @brief Main loop called by the Arduino framework
+ * @details In the loop() routine:
+ *    send the loop count in the JSON format to Altoview
+ * @return void
+ */
+int loopNum = 0;
+char msg[30];                                                         // RSSI:XXX SNR:XX
+char snr[4];                                                          // XX.X
+void loop() {
+  int responseCode;
+  clearLCD();
+  lcd.print("Sending Pairs");
+  responseCode = mdot.sendPairs("L:" + String(loopNum));
+  for (int i=0;i<3;++i){
+      lcd.print(".");
+      delay(1000);                                                    // wait for the sendPairs process to finish
+    }
+    
+  if (responseCode != 0){
+    Serial.println("error in sending pairs");
+    lcd.setCursor(0, 1);
+    lcd.print("err:No Ack       ");
+  }else{
+    mdot.ping(); 
+    clearLCD(); 
+    lcd.print("RSSI:");
+    lcd.print(mdot.rssi);  
+    lcd.setCursor(0, 1);
+    delay(10);
+    lcd.print("SNR:"); 
+    lcd.print(mdot.snr);
+
+    Serial.println("----------------------------------");
+    Serial.print("mdot.rssi: "); 
+    Serial.println(mdot.rssi);
+    Serial.print("mdot.snr: "); 
+    Serial.println(mdot.snr);  
   }
 
-  responseCode = mdot.setDataRate(cmd);
-  if (responseCode != 0) {
-    lcd.print(F("err1"));
+  lcd.setCursor(12,1); 
+  lcd.print("DR:");
+  lcd.print(getDataRate()); 
+  
+  delay(10000);						
+  loopNum++;
+}
+
+/**
+ * read_LCD_buttons()
+ * 
+ * @brief if any button pressed on lcd, return their value
+ * @details function uses the analogRead() to ascertain if any 
+ * buttons were pushed since last check
+ * @return the interger value of the button (defined in header)
+ */
+int read_LCD_buttons(){
+  adc_key_in = analogRead(0);                           // read the value from the sensor
+  if (adc_key_in < 620)  return btnSELECT;
+  if (adc_key_in > 1000) return btnNONE; 
+  if (adc_key_in < 820)  return btnRIGHT;
+  if (adc_key_in < 860)  return btnLEFT;
+  if (adc_key_in < 915)  return btnDOWN;
+  if (adc_key_in < 940)  return btnUP;
+  
+  return btnNONE;  // when all others fail, return this...
+}
+
+/**getDataRate()
+ * 
+ * @brief return the datarate of the mDot 
+ * @details uses the mdot object function getDataRate() 
+ * which stores the datarate in the mdot public member mDot.dataRate
+ * @return dataRate or -1 if response failed
+ */
+uint8_t getDataRate(){
+  int responseCode; 
+  responseCode = mdot.getDataRate();
+  if (responseCode == 0) {
+    return mdot.dataRate;
   } else {
-    lcd.print(F("ok"));
+    return -1;
   }
 }
 
-void dispDataRate() {
-  lcd.print(F("dr: "));
-  responseCode = mdot.getDataRate();
-  if (responseCode != 0) {
-    lcd.print(F("err2"));
-  } else {
-    lcd.print(mdot.dataRate);
-  }
+/**
+ * clearLCD()
+ * 
+ * @brief clears the lcd screen
+ * @details clears top and bottom row of the lcd screen
+ */
+void clearLCD(){
+  lcd.setCursor(0,0);
+  lcd.print("                ");
+  lcd.setCursor(0,1);
+  lcd.print("                ");
+  lcd.setCursor(0,0);                               //return the cursor to the top row, first column
 }
 
 

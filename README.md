@@ -1,27 +1,28 @@
 # LoRa-Range-Testing-Node
 
-This is a program writen for the Seeeduino Stalker v2.3 and   uses the Multitech mDOT LoRa module running the Australian compatable AT   enabled firmware. This script makes use of the following libraries:\
+This is an Auduino Script tested on the Uno using a modified xBee shield. The script uses the Multitech mDOT LoRa module running the Australian compatable AT   enabled firmware. This script makes use of the following libraries:
 
-1. [mdot_lora_arduino](https://github.com/lennon101/mdot_lora_arduino/blob/master/README.md)
-2. [Nokia 5110 LCD](http://randomnerdtutorials.com/complete-guide-for-nokia-5110-lcd-with-arduino/)
+1. [#include <AltoviewMDot.h>](https://github.com/Altoview/Altoview_MDot)
+2. [#include <AltSoftSerial.h>](https://www.pjrc.com/teensy/td_libs_AltSoftSerial.html)
+3. #include <SoftwareSerial.h> --> included in the Arduino libraries
+4. #include <LiquidCrystal.h> --> included in the Arduino libraries
 
 ## What: 
 - The system provides a portable LoRa Range testing solution where **RSSI** and **SNR** of the last packet sent to the network is provided to the user via the nokia lcd.
 - Script loops and sends loop count in the form of a char array: "L: *loop_count*". 
-- Nokia lcd provides update of RSSI and SNR 
-- Rotary encoder (knob) provides user ability to change **Data Rate** of the mDot. 
+
+## Hardware:
+- [mDot Lora Radio Module](http://www.multitech.com/brands/multiconnect-mdot)
+- LiquidCrystal display (LCD) based on the Hitachi HD44780 (or a compatible) chipset. [Arduino Link](https://www.arduino.cc/en/Reference/LiquidCrystal)
+- Modified Arduino xBee Sheild. The mDot is controlled on pins 8 and 9 via the `AltSoftSerial.h` library. The sheild required a modification to ensure the tx/rx pins were rerouted to pins 8/9. 
 
 ## How to use
 1. Clone the project to a preferred folder.
-2. Wire the nokia lcd as per the link provided above
-3. Wire the rotary encoder as per these instructions: [link](9http://domoticx.com/wp-content/uploads/Rotary-encoder-module-KY-040-arduino-schema.png) 
-	* clk --> pin 2 (pin 1 and 2 are the only interupt pins avaialbe) 
-	* data --> pin 9 
-	* vcc --> 5V 
-4. Implementing capacitors (approx. 1uF) from the clock and data pins of the rotary encoder to **GND** was found to help de-bounce the circuit and remove unwanted noise which produced jumping affects from the encoder 
-
-### Debugging: 
-- Once you have uploaded the code to your dev board, you must remove the TX and RX wires (otherwise this will disrupt the mdot signals being sent to the LoRa netork and you node will not connect) 
+2. Upload the project to the arduino board. 
+3. Mount the hardware in the following order:
+	1. Plug the arduino xbee shield onto the arduino board
+	2. Plug the MDot into the xbee shield 
+	3. Plug the LCD on top of the xbee shield, Ensure the tx/rx pins of the LCD are rerouted to software serial pins (in this case they are pins 2/3). 
 
 #### Explanation of lcd returns:  
 An explanation of some likely debug responses is listed below: 
