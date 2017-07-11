@@ -25,10 +25,10 @@
 /*--------------------------------------------------------------------------------------
   Includes
   --------------------------------------------------------------------------------------*/
-float getSlope(float history[]) __attribute__((__optimize__("O2")));
+float getSlope(float history[]) __attribute__((__optimize__("O2")));        // set the compilation optimization to O2 
 
-#define DEBUG                                 // uncomment to print ALL debug info and responses from mDot
-//#define DEBUG2                                // uncomment to print only timed out responses and commands
+#define DEBUG                                                   // uncomment to print ALL debug info and responses from mDot
+//#define DEBUG2                                                // uncomment to print only timed out responses and commands
 
 #include <AltoviewMDot.h>
 #include <AltSoftSerial.h>
@@ -39,11 +39,11 @@ float getSlope(float history[]) __attribute__((__optimize__("O2")));
   Definitions
   --------------------------------------------------------------------------------------*/
 /* library uses software serial to communicate with the mDot module */
-AltSoftSerial mdotSerial;				                              // AltSoftSerial only uses ports 8, 9 for RX, TX 
-//HardwareSerial& Serial = Serial;                         // library uses hardware serial to print the debuggin information
-AltoviewMDot mdot(&mdotSerial, &Serial);                 // creat an object of a type LoRaAT called mDot
+AltSoftSerial mdotSerial;				                                 // AltSoftSerial only uses ports 8, 9 for RX, TX 
+//HardwareSerial& Serial = Serial;                               // library uses hardware serial to print the debuggin information
+AltoviewMDot mdot(&mdotSerial, &Serial);                         // creat an object of a type LoRaAT called mDot
 
-LiquidCrystal lcd(2, 3, 4, 5, 6, 7);                          // initialize the library with the numbers of the interface pins
+LiquidCrystal lcd(2, 3, 4, 5, 6, 7);                             // initialize the library with the numbers of the interface pins
 
 // define some values used by the panel and buttons
 int lcd_key     = 0;
@@ -62,42 +62,42 @@ int adc_key_in  = 0;
    - Opens serial communication with MDOT
   --------------------------------------------------------------------------------------*/
 void setup() {
-  int responseCode;                                     // Variable to hold response from mDot LoRa radio
-  Serial.begin(38400);                             // begins a serial communication of a hardware serial  
-  mdotSerial.begin(38400);                              // begins a serial communication of a software serial 
+  int responseCode;                                               // Variable to hold response from mDot LoRa radio
+  Serial.begin(38400);                                            // begins a serial communication of a hardware serial  
+  mdotSerial.begin(38400);                                        // begins a serial communication of a software serial 
   Serial.println("========================================\n========= LoRa Range Testing =========\n========================================");
 
   Serial.println("Joining Altoview...");
    
-  lcd.begin(16, 2);                                     // set up the LCD's number of columns and rows
+  lcd.begin(16, 2);                                                // set up the LCD's number of columns and rows
   mdot.begin();							
 
   int failCount = 0; 
   do {
     clearLCD(); 
-    lcd.print("Joining Altoview");                        // Print a message to the LCD.
-    lcd.setCursor(8,1);                                 // move to column 8, row 1 
+    lcd.print("Joining Altoview");                                 // Print a message to the LCD.
+    lcd.setCursor(7,1);                                            // move to column 8, row 1 
     lcd.print("fail #:");
     lcd.print(failCount); 
-    lcd.setCursor(0, 1);                                // move curser to column 0, row 1
-    responseCode = mdot.join();                         // attempt to join to Altoview
+    lcd.setCursor(0, 1);                                           // move curser to column 0, row 1
+    responseCode = mdot.join();                                    // attempt to join to Altoview
     for (int i=0;i<3;++i){
       lcd.print(".");
-      delay(1000);                                      // wait for the join process to finish
+      delay(1000);                                                 // wait for the join process to finish
     }
     if (responseCode != 0){
       ++failCount;
     }
   } while (responseCode != 0);
   
-  clearLCD();                                            // return the cursor to the top row, first column 
-  lcd.print("Joined.         ");                         // display msg and fill string to 16 characters long to clear any
+  clearLCD();                                                        // return the cursor to the top row, first column 
+  lcd.print("Joined.         ");                                     // display msg and fill string to 16 characters long to clear any
   delay(1500);
 
-  lcd.setCursor(0,1);                                    // move to the begining of the second line
+  lcd.setCursor(0,1);                                                // move to the begining of the second line
   lcd.print("Hit SEL to begin"); 
   while (lcd_key != btnSELECT){
-    lcd_key = read_LCD_buttons();  // read the buttons
+    lcd_key = read_LCD_buttons();                                    // read the buttons
   } 
 }
 
@@ -108,8 +108,8 @@ void setup() {
    - send the loop count in the JSON format to Altoview
   --------------------------------------------------------------------------------------*/
 int loopNum = 0;
-char msg[30];                                           // RSSI:XXX SNR:XX
-char snr[4];                                            // XX.X
+char msg[30];                                                         // RSSI:XXX SNR:XX
+char snr[4];                                                          // XX.X
 void loop() {
   int responseCode;
   clearLCD();
@@ -117,21 +117,21 @@ void loop() {
   responseCode = mdot.sendPairs("L:" + String(loopNum));
   for (int i=0;i<3;++i){
       lcd.print(".");
-      delay(1500);                                      // wait for the sendPairs process to finish
+      delay(1000);                                                    // wait for the sendPairs process to finish
     }
     
   if (responseCode != 0){
     Serial.println("error in sending pairs");
     lcd.setCursor(0, 1);
-    lcd.print("error           ");
+    lcd.print("err:No Ack       ");
   }else{
     mdot.ping(); 
     clearLCD(); 
-    lcd.print("R:");
+    lcd.print("RSSI:");
     lcd.print(mdot.rssi);  
     lcd.setCursor(0, 1);
     delay(10);
-    lcd.print("S:"); 
+    lcd.print("SNR:"); 
     lcd.print(mdot.snr);
 
     Serial.println("----------------------------------");
@@ -141,8 +141,9 @@ void loop() {
     Serial.println(mdot.snr);  
   }
 
-  //lcd.setCursor(1,14); 
-  //lcd.print(getDataRate()); 
+  lcd.setCursor(12,1); 
+  lcd.print("DR:");
+  lcd.print(getDataRate()); 
   
   delay(10000);						
   loopNum++;
@@ -164,7 +165,7 @@ int read_LCD_buttons(){
 uint8_t getDataRate(){
   int responseCode; 
   responseCode = mdot.getDataRate();
-  if (responseCode != 0) {
+  if (responseCode == 0) {
     return mdot.dataRate;
   } else {
     return -1;
